@@ -111,47 +111,113 @@ function parseBold(str: string): React.ReactNode[] {
   )
 }
 
+// Section config for structured responses
+const SECTION_CONFIG: Record<string, { cls: string; color: string }> = {
+  '🧠': { cls: 'section-causes',    color: 'var(--green)' },
+  '📊': { cls: 'section-why',       color: '#818cf8' },
+  '⚠️': { cls: 'section-warning',   color: '#fbbf24' },
+  '💡': { cls: 'section-do',        color: '#34d399' },
+  '📌': { cls: 'section-note',      color: 'var(--muted)' },
+  '🚨': { cls: 'section-emergency', color: '#f87171' },
+  '📞': { cls: 'section-steps',     color: '#60a5fa' },
+}
+
+function parseBullets(lines: string[]): React.ReactNode {
+  return (
+    <ul style={{ margin: '4px 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {lines.map((b, i) => (
+        <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, lineHeight: 1.6 }}>
+          <span style={{ color: 'var(--green)', marginTop: 4, fontSize: '0.5rem', flexShrink: 0 }}>●</span>
+          <span className="section-body">{parseBold(b)}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function RenderContent({ text, streaming }: { text: string; streaming?: boolean }) {
   const lines = text.split('\n')
-  const out: React.ReactNode[] = []
-  const bullets: string[] = []
 
-  const flush = (k: string) => {
-    if (!bullets.length) return
-    const items = [...bullets]; bullets.length = 0
-    out.push(
-      <ul key={k} style={{ margin: '6px 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {items.map((b, i) => (
-          <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, lineHeight: 1.6 }}>
-            <span style={{ color: 'var(--green)', marginTop: 4, fontSize: '0.5rem', flexShrink: 0 }}>●</span>
-            <span>{parseBold(b)}</span>
-          </li>
-        ))}
-      </ul>
+  // Detect severity tag
+  let severityEl: React.ReactNode = null
+  if (text.includes('🟢 Mild'))        severityEl = <div className="severity-mild">🟢 Mild</div>
+  else if (text.includes('🟡 Moderate')) severityEl = <div className="severity-moderate">🟡 Moderate</div>
+  else if (text.includes('🔴 High Risk')) severityEl = <div className="severity-high">🔴 High Risk</div>
+
+  // Check if structured response (has section headers)
+  const isStructured = /^[🧠📊⚠️💡📌🚨📞]/m.test(text)
+
+  if (!isStructured) {
+    // Phase 1 conversational — simple render
+    const out: React.ReactNode[] = []
+    const bullets: string[] = []
+    const flush = (k: string) => {
+      if (!bullets.length) return
+      const items = [...bullets]; bullets.length = 0
+      out.push(parseBullets(items))
+    }
+    lines.forEach((line, i) => {
+      const t = line.trim()
+      if (!t) { flush(`b${i}`); out.push(<div key={`s${i}`} style={{ height: 3 }} />); return }
+      if (/^[🚨📅🏠🟢🟡🔴]/.test(t)) return
+      if (t.startsWith('*') && !t.startsWith('**') && t.endsWith('*') && t.length > 2) {
+        flush(`di${i}`)
+        out.push(<p key={i} style={{ fontSize: '0.72rem', opacity: 0.38, fontStyle: 'italic', margin: '6px 0 0' }}>{t.slice(1,-1)}</p>)
+        return
+      }
+      if (t.startsWith('- ') || (t.startsWith('* ') && !t.startsWith('**'))) { bullets.push(t.slice(2)); return }
+      if (t === '*' || t === '-') return
+      flush(`p${i}`)
+      out.push(<p key={i} style={{ lineHeight: 1.65, margin: '2px 0', fontSize: '0.875rem' }}>{parseBold(t)}</p>)
+    })
+    flush('end')
+    return (
+      <div className={streaming ? 'streaming-cursor' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {out}
+      </div>
     )
   }
 
-  lines.forEach((line, i) => {
+  // Structured response — parse into sections
+  type Section = { emoji: string; header: string; lines: string[] }
+  const sections: Section[] = []
+  let current: Section | null = null
+
+  lines.forEach(line => {
     const t = line.trim()
-    if (!t) { flush(`b${i}`); out.push(<div key={`s${i}`} style={{ height: 4 }} />); return }
-    if (/^[🚨📅🏠]/.test(t)) return
-    if (t.startsWith('*') && !t.startsWith('**') && t.endsWith('*') && t.length > 2) {
-      flush(`di${i}`)
-      out.push(<p key={i} style={{ fontSize: '0.72rem', opacity: 0.38, fontStyle: 'italic', margin: '8px 0 0', lineHeight: 1.5 }}>{t.slice(1, -1)}</p>)
+    if (!t || /^[🟢🟡🔴📅🏠🚨]/.test(t) && !t.includes('Attention') && !t.includes('EMERGENCY') && !t.includes('Needed')) return
+
+    // Check if line is a section header (starts with known emoji)
+    const headerMatch = t.match(/^([🧠📊⚠️💡📌🚨📞])\s(.+)/)
+    if (headerMatch) {
+      if (current) sections.push(current)
+      current = { emoji: headerMatch[1], header: t, lines: [] }
       return
     }
-    if (t.startsWith('- ')) { bullets.push(t.slice(2)); return }
-    if (t.startsWith('* ') && !t.startsWith('**')) { bullets.push(t.slice(2)); return }
-    if (/^\d+\.\s/.test(t)) { bullets.push(t.replace(/^\d+\.\s/, '')); return }
-    if (t === '*' || t === '-' || t === '•') return
-    flush(`p${i}`)
-    out.push(<p key={i} style={{ lineHeight: 1.65, margin: '2px 0' }}>{parseBold(t)}</p>)
+    if (current && t.startsWith('- ')) { current.lines.push(t.slice(2)); return }
+    if (current && t.startsWith('* ') && !t.startsWith('**')) { current.lines.push(t.slice(2)); return }
+    if (current && t !== '*' && t !== '-') { current.lines.push(t) }
   })
-  flush('end')
+  if (current) sections.push(current)
 
   return (
-    <div className={streaming ? 'streaming-cursor' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: '0.875rem' }}>
-      {out}
+    <div className={streaming ? 'streaming-cursor' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {severityEl}
+      {sections.map((sec, i) => {
+        const cfg = SECTION_CONFIG[sec.emoji] || { cls: '', color: 'var(--text)' }
+        const isBullets = sec.lines.every(l => l.length < 120)
+        return (
+          <div key={i} className={`response-section ${cfg.cls}`}>
+            <div className="section-header" style={{ color: cfg.color }}>{sec.header}</div>
+            {isBullets && sec.lines.length > 1
+              ? parseBullets(sec.lines)
+              : <div className="section-body">{sec.lines.map((l, j) => (
+                  <p key={j} style={{ margin: '2px 0' }}>{parseBold(l)}</p>
+                ))}</div>
+            }
+          </div>
+        )
+      })}
     </div>
   )
 }
