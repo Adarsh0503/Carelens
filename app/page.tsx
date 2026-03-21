@@ -715,7 +715,10 @@ export default function Home() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: updated }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Request failed')
+      }
       const reader = res.body?.getReader()
       const dec = new TextDecoder()
       let acc = ''
@@ -729,9 +732,10 @@ export default function Home() {
       }
       setMsgs(p => [...p.slice(0,-1), { role: 'assistant', content: acc, streaming: false, ts: Date.now() }])
       if (acc.includes('🚨')) setTimeout(() => setOver(true), 600)
-    } catch {
+    } catch (e: unknown) {
       stopThink(); setBusy(false)
-      setErr('Something went wrong. Check your connection and try again.')
+      const msg = (e instanceof Error && e.message) ? e.message : 'Something went wrong. Try again.'
+      setErr(msg)
     }
   }, [input, busy, msgs, inChat])
 

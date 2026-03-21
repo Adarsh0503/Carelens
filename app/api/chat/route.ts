@@ -136,11 +136,25 @@ export async function POST(req: NextRequest) {
         'Transfer-Encoding': 'chunked',
       },
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('API error:', error)
+
+    // Detect rate limit
+    const isRateLimit =
+      error instanceof Error && (
+        error.message.includes('rate_limit') ||
+        error.message.includes('429') ||
+        error.message.includes('Rate limit') ||
+        (typeof error === 'object' && error !== null && 'status' in error && (error as {status: number}).status === 429)
+      )
+
+    const message = isRateLimit
+      ? '⚠️ Service is temporarily busy due to high demand. Please wait a minute and try again.'
+      : '⚠️ Something went wrong. Please check your connection and try again.'
+
     return new Response(
-      JSON.stringify({ error: 'Something went wrong. Please try again.' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: message }),
+      { status: isRateLimit ? 429 : 500, headers: { 'Content-Type': 'application/json' } }
     )
   }
 }
