@@ -379,12 +379,19 @@ export default function Home() {
 
   // Timeline visibility: show when typing symptom without duration
   const updateTimeline = (val: string) => {
-    // Only show timeline picker after bot has asked at least one question
-    // i.e. there are at least 2 messages (welcome + user + bot reply)
+    // Only show after bot has asked at least one clarifying question
     const botHasReplied = msgs.filter(m => m.role === 'assistant').length > 1
+
+    // Check if user has ALREADY mentioned time in ANY previous user message
+    const alreadyAnsweredTime = msgs
+      .filter(m => m.role === 'user')
+      .some(m => /\b(day|days|week|weeks|month|months|hour|hours|since|ago|yesterday|today|morning|night|started|begin|began)\b/i.test(m.content))
+
     const hasContent = val.length > 6
-    const hasTime = /\b(day|days|week|weeks|month|months|hour|hours|since|ago|yesterday|today|morning|night|started|begin|began)\b/i.test(val)
-    setShowTL(botHasReplied && hasContent && !hasTime)
+    const hasTimeInInput = /\b(day|days|week|weeks|month|months|hour|hours|since|ago|yesterday|today|morning|night|started|begin|began)\b/i.test(val)
+
+    // Hide if: bot hasn't replied, user already answered time, or current input has time
+    setShowTL(botHasReplied && !alreadyAnsweredTime && hasContent && !hasTimeInInput)
   }
 
   const send = useCallback(async (txt?: string) => {
@@ -430,7 +437,8 @@ export default function Home() {
   const appendTimeline = (value: string) => {
     setInput(p => {
       const base = p.trimEnd()
-      return base ? base + ', ' + value : value
+      // If input already has content, append with space; otherwise just set
+      return base ? base + ' ' + value : value
     })
     setShowTL(false)
     taRef.current?.focus()
