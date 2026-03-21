@@ -171,7 +171,7 @@ function FindDoctorBtn({ level }: { level: 'soon' | 'emergency' }) {
 function EmergencyOverlay({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.93)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(12px)', animation: 'fadeIn 0.25s ease' }}>
-      <div style={{ background: '#150a0a', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 22, padding: '40px 28px', maxWidth: 440, width: '100%', textAlign: 'center', animation: 'scaleIn 0.35s cubic-bezier(0.16,1,0.3,1)' }}>
+      <div style={{ background: '#150a0a', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 22, padding: '40px 28px', maxWidth: 440, width: '100%', textAlign: 'center', animation: 'scaleIn 0.35s cubic-bezier(0.16,1,0.3,1)', position: 'relative' }}>
         <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(248,113,113,0.1)', border: '2px solid rgba(248,113,113,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, margin: '0 auto 20px', animation: 'pulseGlow 1.5s ease-in-out infinite' }}>🚨</div>
         <h2 style={{ color: '#f87171', fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, margin: '0 0 10px' }}>Seek Emergency Care</h2>
         <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.875rem', lineHeight: 1.7, margin: '0 0 28px' }}>Your symptoms may require immediate attention. Please call emergency services or go to your nearest emergency room now.</p>
@@ -180,6 +180,7 @@ function EmergencyOverlay({ onDismiss }: { onDismiss: () => void }) {
           <a href="tel:911" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, padding: '12px 24px', fontWeight: 700, fontSize: '0.95rem', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>📞 Call 911</a>
         </div>
         <button onClick={onDismiss} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.28)', fontSize: '0.74rem', cursor: 'pointer', fontFamily: 'var(--font-body)', textDecoration: 'underline' }}>I understand, continue reading</button>
+        <button onClick={onDismiss} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '1rem', fontFamily: 'var(--font-body)' }}>✕</button>
       </div>
     </div>
   )
@@ -304,14 +305,7 @@ function Landing({ onSend }: { onSend: (t: string) => void }) {
         </button>
       </div>
 
-      {/* Feature pills */}
-      <div className="fade-up fade-up-4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 7, marginBottom: 18 }}>
-        {[['🔒','Private'],['⚡','Instant'],['🎯','Triage'],['📍','Doctor finder']].map(([icon, label]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 100, padding: '5px 12px', fontSize: '0.73rem', color: 'var(--subtext)', fontWeight: 500, boxShadow: 'var(--shadow-sm)' }}>
-            <span>{icon}</span><span>{label}</span>
-          </div>
-        ))}
-      </div>
+
 
       {/* Quick chips */}
       <div className="fade-up fade-up-5" style={{ textAlign: 'center', width: '100%' }}>
@@ -343,8 +337,10 @@ export default function Home() {
   const [showTL,  setShowTL]= useState(false)
   const [thinking,setThink] = useState(THINKING[0])
   const [overlay, setOver]  = useState(false)
+  const [showScrollTop, setShowScrollTop] = useState(false)
 
-  const endRef  = useRef<HTMLDivElement>(null)
+  const endRef      = useRef<HTMLDivElement>(null)
+  const messagesRef = useRef<HTMLDivElement>(null)
   const taRef   = useRef<HTMLTextAreaElement>(null)
   const tmrRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   // Use mousedown ref to handle timeline click before blur fires
@@ -361,6 +357,15 @@ export default function Home() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, busy])
 
+  // Show scroll-to-top button when user scrolls up in chat
+  useEffect(() => {
+    const el = messagesRef.current
+    if (!el) return
+    const onScroll = () => setShowScrollTop(el.scrollTop > 300)
+    el.addEventListener('scroll', onScroll)
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [inChat])
+
   useEffect(() => {
     const ta = taRef.current
     if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px' }
@@ -374,9 +379,12 @@ export default function Home() {
 
   // Timeline visibility: show when typing symptom without duration
   const updateTimeline = (val: string) => {
+    // Only show timeline picker after bot has asked at least one question
+    // i.e. there are at least 2 messages (welcome + user + bot reply)
+    const botHasReplied = msgs.filter(m => m.role === 'assistant').length > 1
     const hasContent = val.length > 6
-    const hasTime = /\b(day|days|week|weeks|month|months|hour|hours|since|ago|yesterday|today|morning|night)\b/i.test(val)
-    setShowTL(hasContent && !hasTime)
+    const hasTime = /\b(day|days|week|weeks|month|months|hour|hours|since|ago|yesterday|today|morning|night|started|begin|began)\b/i.test(val)
+    setShowTL(botHasReplied && hasContent && !hasTime)
   }
 
   const send = useCallback(async (txt?: string) => {
@@ -462,7 +470,7 @@ export default function Home() {
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: 700, width: '100%', margin: '0 auto', padding: '20px 16px 0', gap: 12 }}>
 
           {/* Messages */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+          <div ref={messagesRef} style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto', paddingRight: 2 }}>
             {msgs.map((msg, i) => (
               <Bubble key={i} msg={msg} isWelcome={i === 0 && msg.role === 'assistant'} />
             ))}
@@ -483,6 +491,28 @@ export default function Home() {
             )}
             <div ref={endRef} />
           </div>
+
+          {/* Scroll to top button */}
+          {showScrollTop && (
+            <button
+              onClick={() => messagesRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+              style={{
+                position: 'fixed', bottom: 100, right: 24, zIndex: 40,
+                width: 40, height: 40, borderRadius: '50%',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                color: 'var(--subtext)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', fontSize: '1rem',
+                boxShadow: 'var(--shadow-md)',
+                transition: 'all 0.2s ease',
+                animation: 'fadeIn 0.2s ease',
+              }}
+              title="Scroll to top"
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--green)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--green)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--subtext)' }}
+            >↑</button>
+          )}
 
           {/* INPUT */}
           <div className="input-sticky">
