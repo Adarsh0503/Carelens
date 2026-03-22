@@ -239,18 +239,57 @@ function TriageBadge({ level }: { level: 'emergency' | 'soon' | 'home' }) {
 // Map symptoms to relevant doctor specialty
 function getDoctorSpecialty(msgs: Message[]): string {
   const allText = msgs.map(m => m.content).join(' ').toLowerCase()
-  if (/chest pain|cardiac|palpitation|arm numb|heart/.test(allText))    return 'cardiologist'
-  if (/breath|asthma|cough|respiratory|lung/.test(allText))             return 'pulmonologist'
-  if (/stomach|abdomen|nausea|bowel|acid|digestive/.test(allText))      return 'gastroenterologist'
-  if (/skin|rash|itch|acne|eczema/.test(allText))                       return 'dermatologist'
-  if (/headache|migraine|dizzy|seizure|neuro/.test(allText))            return 'neurologist'
-  if (/sugar|diabetes|thyroid|hormone/.test(allText))                   return 'endocrinologist'
-  if (/joint|bone|knee|back|arthritis|muscle/.test(allText))            return 'orthopedic doctor'
-  if (/eye|vision|blur/.test(allText))                                   return 'ophthalmologist'
-  if (/ear|hearing|throat|nose|sinus/.test(allText))                    return 'ENT specialist'
-  if (/anxiety|depression|mental|stress|sleep/.test(allText))           return 'psychiatrist'
-  if (/urine|kidney|bladder/.test(allText))                             return 'urologist'
-  if (/child|infant|baby/.test(allText))                                return 'pediatrician'
+
+  // Order matters — most specific first, general last
+  // Emergency / cardiac
+  if (/chest pain|chest tightness|heart attack|palpitation|arm numb|arm numbness|cardiac/.test(allText))
+    return 'cardiologist'
+
+  // Respiratory — only if explicit breathing/lung symptoms
+  if (/shortness of breath|difficulty breathing|cant breathe|can't breathe|asthma|wheezing|lung/.test(allText))
+    return 'pulmonologist'
+
+  // Neuro — headache is neuro, NOT pulmo
+  if (/headache|migraine|head pain|dizzy|dizziness|seizure|fainting|memory loss|numbness in face/.test(allText))
+    return 'neurologist'
+
+  // Stomach / digestive
+  if (/stomach|abdomen|abdominal|nausea|vomiting|bowel|diarrhea|constipation|acid reflux|digestive/.test(allText))
+    return 'gastroenterologist'
+
+  // Skin
+  if (/skin rash|rash|itch|itching|acne|eczema|hives|skin problem/.test(allText))
+    return 'dermatologist'
+
+  // ENT — throat/ear/nose/sinus
+  if (/sore throat|throat pain|ear pain|earache|hearing|runny nose|blocked nose|sinus|tonsil/.test(allText))
+    return 'ENT specialist'
+
+  // Bones / joints
+  if (/joint pain|knee pain|back pain|bone pain|arthritis|sprain|fracture|muscle pain/.test(allText))
+    return 'orthopedic doctor'
+
+  // Hormones / metabolism
+  if (/diabetes|blood sugar|thyroid|weight gain|weight loss|hormone|fatigue with weight/.test(allText))
+    return 'endocrinologist'
+
+  // Eyes
+  if (/eye pain|blurry vision|vision loss|eye infection|redness in eye/.test(allText))
+    return 'ophthalmologist'
+
+  // Mental health
+  if (/anxiety|depression|panic attack|mental health|stress|insomnia|sleep disorder/.test(allText))
+    return 'psychiatrist'
+
+  // Urinary
+  if (/urine|urination|kidney|bladder|burning while peeing/.test(allText))
+    return 'urologist'
+
+  // Child
+  if (/child|infant|baby|toddler|pediatric/.test(allText))
+    return 'pediatrician'
+
+  // Fever alone or general symptoms → physician / general practitioner
   return 'physician'
 }
 
