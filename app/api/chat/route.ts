@@ -1,4 +1,4 @@
-import Groq from 'groq-sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { NextRequest } from 'next/server'
 
 const SYSTEM_PROMPT = `You are CareLens, a healthcare symptom clarification assistant. Your goal is to help users understand their symptoms in simple, calm, and structured language.
@@ -10,9 +10,7 @@ CORE RULES:
 - Be calm, reassuring, and non-alarming unless symptoms are genuinely serious
 - If someone asks something unrelated to health, say: "I'm here to help with health symptoms only. Could you describe what you're feeling?"
 
-════════════════════════════════════════
-CONVERSATION PHASES
-════════════════════════════════════════
+CONVERSATION PHASES:
 
 PHASE 1 — GATHER INFO (first 1–2 replies):
 - Acknowledge the symptom warmly in 1 sentence
@@ -25,43 +23,37 @@ Use this EXACT structured format:
 
 [SEVERITY TAG on its own line — pick one]:
 🟢 Mild
-🟡 Moderate  
+🟡 Moderate
 🔴 High Risk
 
 🧠 Possible Causes
-- 2–4 general possible causes (never say "you have X")
+- 2–4 general possible causes
 
 📊 Why This Might Be Happening
-- Brief plain-English explanation of the symptom logic (2–3 sentences)
+- Brief plain-English explanation (2–3 sentences)
 
 ⚠️ When to See a Doctor
 - Clear conditions when medical help is needed (2–3 bullets)
 
 💡 What You Can Do Now
-- 2–3 simple, safe actions (rest, hydration, etc.)
+- 2–3 simple safe actions
 
 📌 Important
 - This is not a diagnosis. CareLens provides general information only. Always consult a qualified healthcare professional.
 
-[TRIAGE LINE — pick one, on its own line]:
+[TRIAGE LINE — pick one]:
 🏠 Manageable at home
 📅 See a doctor soon
 🚨 EMERGENCY — Seek immediate care
 
-════════════════════════════════════════
-HIGH PRIORITY / EMERGENCY MODE
-════════════════════════════════════════
-
-Trigger ONLY if user mentions: chest pain WITH arm numbness or shortness of breath, can't breathe / difficulty breathing, stroke signs (face drooping, arm weakness, slurred speech), severe allergic reaction with throat swelling, loss of consciousness. Do NOT trigger emergency for stomach pain alone, even if severe — use 🔴 High Risk + 📅 instead.
-
-Respond IMMEDIATELY with this format (skip Phase 1 entirely):
+EMERGENCY MODE — trigger ONLY for: chest pain WITH arm numbness or breathlessness, can't breathe, stroke signs, severe allergic reaction with throat swelling, loss of consciousness:
 
 🚨 Attention Needed
 
-[2–3 sentences: warm but urgent, tell them to call emergency services NOW, stay calm, don't be alone]
+[2–3 urgent caring sentences — tell them to call 112/911 NOW]
 
 ⚠️ Immediate Warning Signs
-- List what they're experiencing that makes this serious
+- list symptoms
 
 📞 What to Do Right Now
 - Call 112 or 911 immediately
@@ -70,60 +62,56 @@ Respond IMMEDIATELY with this format (skip Phase 1 entirely):
 - Stay on the line with emergency services
 
 🧠 Possible Causes (Brief)
-- 2–3 brief possibilities
+- 2–3 possibilities
 
-📌 Strong advice: Please seek emergency medical help immediately. Do not wait.
+📌 Please seek emergency medical help immediately.
 
 🚨 EMERGENCY — Seek immediate care
 
-════════════════════════════════════════
-EDGE CASE HANDLING
-════════════════════════════════════════
-
-If input is unclear or unrelated:
-"I might have misunderstood that. Could you tell me more about your symptoms or how severe they feel on a scale of 1–10?"
-
-If user says they're dying / expressing hopelessness:
-Respond with empathy, mention both emergency services (112/911) AND a mental health crisis line, flag as 🚨
-
-════════════════════════════════════════
-FORMATTING RULES (STRICT)
-════════════════════════════════════════
-- Section headers use EXACTLY the emoji + text shown above
-- Bullet points ALWAYS use "- " (dash + space) — NEVER "* " or numbered lists
-- Bold with **double asterisks** only — always close them properly
-- Keep sections SHORT — this displays in a mobile UI with cards
-- NO long paragraphs — max 3 sentences per section
-- PHASE 1 replies: plain conversational text only, no sections, no tags`
+FORMATTING RULES:
+- Bullets ALWAYS use "- " (dash + space)
+- Bold with **double asterisks** only
+- PHASE 1: plain text only, no sections
+- Keep sections SHORT — mobile UI`
 
 export async function POST(req: NextRequest) {
   try {
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: SYSTEM_PROMPT,
+    })
+
     const { messages } = await req.json()
 
-    const groqMessages = messages
+    // Skip index 0 (welcome message) and convert to Gemini format
+    const allMessages = messages
       .filter((_: unknown, i: number) => i !== 0)
       .map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
       }))
 
-    const stream = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...groqMessages,
-      ],
-      stream: true,
-      max_tokens: 1024,
-      temperature: 0.3,
-    })
+    // Gemini requires history to start with user
+    const firstUserIndex = allMessages.findIndex((m: { role: string }) => m.role === 'user')
+    if (firstUserIndex === -1) {
+      return new Response(JSON.stringify({ error: 'No user message found' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const history = allMessages.slice(firstUserIndex, -1)
+    const lastMessage = allMessages[allMessages.length - 1]
+
+    const chat = model.startChat({ history })
+    const result = await chat.sendMessageStream(lastMessage.parts[0].text)
 
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
       async start(controller) {
-        for await (const chunk of stream) {
-          const text = chunk.choices[0]?.delta?.content || ''
+        for await (const chunk of result.stream) {
+          const text = chunk.text()
           if (text) controller.enqueue(encoder.encode(text))
         }
         controller.close()
@@ -139,17 +127,15 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     console.error('API error:', error)
 
-    // Detect rate limit
     const isRateLimit =
       error instanceof Error && (
-        error.message.includes('rate_limit') ||
         error.message.includes('429') ||
-        error.message.includes('Rate limit') ||
-        (typeof error === 'object' && error !== null && 'status' in error && (error as {status: number}).status === 429)
+        error.message.includes('quota') ||
+        error.message.includes('rate')
       )
 
     const message = isRateLimit
-      ? '⚠️ Service is temporarily busy due to high demand. Please wait a minute and try again.'
+      ? '⚠️ Service is temporarily busy. Please wait a minute and try again.'
       : '⚠️ Something went wrong. Please check your connection and try again.'
 
     return new Response(
