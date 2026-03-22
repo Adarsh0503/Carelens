@@ -235,28 +235,59 @@ function TriageBadge({ level }: { level: 'emergency' | 'soon' | 'home' }) {
   return <div className={`badge ${cfg.cls}`}>{cfg.icon} {cfg.label}</div>
 }
 
-// ── Find doctor ────────────────────────────────────────────────────────
-function FindDoctorBtn({ level }: { level: 'soon' | 'emergency' }) {
+// ── Find doctor ─────────────────────────────────────────────────────────
+// Map symptoms to relevant doctor specialty
+function getDoctorSpecialty(msgs: Message[]): string {
+  const allText = msgs.map(m => m.content).join(' ').toLowerCase()
+  if (/chest pain|cardiac|palpitation|arm numb|heart/.test(allText))    return 'cardiologist'
+  if (/breath|asthma|cough|respiratory|lung/.test(allText))             return 'pulmonologist'
+  if (/stomach|abdomen|nausea|bowel|acid|digestive/.test(allText))      return 'gastroenterologist'
+  if (/skin|rash|itch|acne|eczema/.test(allText))                       return 'dermatologist'
+  if (/headache|migraine|dizzy|seizure|neuro/.test(allText))            return 'neurologist'
+  if (/sugar|diabetes|thyroid|hormone/.test(allText))                   return 'endocrinologist'
+  if (/joint|bone|knee|back|arthritis|muscle/.test(allText))            return 'orthopedic doctor'
+  if (/eye|vision|blur/.test(allText))                                   return 'ophthalmologist'
+  if (/ear|hearing|throat|nose|sinus/.test(allText))                    return 'ENT specialist'
+  if (/anxiety|depression|mental|stress|sleep/.test(allText))           return 'psychiatrist'
+  if (/urine|kidney|bladder/.test(allText))                             return 'urologist'
+  if (/child|infant|baby/.test(allText))                                return 'pediatrician'
+  return 'physician'
+}
+
+function FindDoctorBtn({ level, msgs }: { level: 'soon' | 'emergency'; msgs: Message[] }) {
   const [busy, setBusy] = useState(false)
   const emergency = level === 'emergency'
+  const specialty = emergency ? 'emergency hospital' : getDoctorSpecialty(msgs)
+
   const go = () => {
     setBusy(true)
-    const q = emergency ? 'emergency hospital near me' : 'GP doctor clinic near me'
+    const q = emergency ? 'emergency hospital near me' : specialty + ' near me'
     const open = (lat?: number, lng?: number) => {
-      window.open(`https://www.google.com/maps/search/${encodeURIComponent(q)}` + (lat ? `/@${lat},${lng},14z` : ''), '_blank')
+      window.open(
+        `https://www.google.com/maps/search/${encodeURIComponent(q)}` + (lat ? `/@${lat},${lng},14z` : ''),
+        '_blank'
+      )
       setBusy(false)
     }
     navigator.geolocation
-      ? navigator.geolocation.getCurrentPosition(p => open(p.coords.latitude, p.coords.longitude), () => open(), { timeout: 5000 })
+      ? navigator.geolocation.getCurrentPosition(
+          p => open(p.coords.latitude, p.coords.longitude),
+          () => open(), { timeout: 5000 }
+        )
       : open()
   }
+
+  const btnLabel = busy ? '📍 Locating…'
+    : emergency ? '🏥 Find nearest ER'
+    : `📍 Find ${specialty} nearby`
+
   return (
     <button onClick={go} disabled={busy} className="find-doctor-btn" style={{
       borderColor: emergency ? 'var(--badge-err-border)' : 'var(--green-border)',
       background:  emergency ? 'var(--badge-err-bg)' : 'var(--green-glow)',
       color:       emergency ? 'var(--badge-err-text)' : 'var(--green)',
     }}>
-      {busy ? '📍 Locating…' : emergency ? '🏥 Find nearest ER' : '📍 Find a doctor nearby'}
+      {btnLabel}
       {!busy && <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>↗</span>}
     </button>
   )
@@ -316,8 +347,8 @@ function FollowUpChips({ triage, onSelect }: { triage: 'emergency' | 'soon' | 'h
 }
 
 // ── Message bubble ─────────────────────────────────────────────────────
-function Bubble({ msg, isWelcome, isLast, onFollowUp }: {
-  msg: Message; isWelcome?: boolean; isLast?: boolean; onFollowUp?: (v: string) => void
+function Bubble({ msg, isWelcome, isLast, onFollowUp, msgs }: {
+  msg: Message; isWelcome?: boolean; isLast?: boolean; onFollowUp?: (v: string) => void; msgs?: Message[]
 }) {
   const isUser = msg.role === 'user'
   const triage = !msg.streaming ? detectTriage(msg.content) : null
@@ -335,7 +366,7 @@ function Bubble({ msg, isWelcome, isLast, onFollowUp }: {
         {triage && !isUser && !msg.streaming && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
             <TriageBadge level={triage} />
-            {(triage === 'soon' || triage === 'emergency') && <FindDoctorBtn level={triage} />}
+            {(triage === 'soon' || triage === 'emergency') && <FindDoctorBtn level={triage} msgs={msgs || []} />}
           </div>
         )}
         {/* 💬 Follow-up chips on last bot message only */}
@@ -794,6 +825,7 @@ export default function Home() {
                 isWelcome={i === 0 && msg.role === 'assistant'}
                 isLast={i === msgs.length - 1}
                 onFollowUp={txt => { setInput(txt); setTimeout(() => send(txt), 100) }}
+                msgs={msgs}
               />
             ))}
             {busy && <TypingDots msg={thinking} />}
