@@ -364,9 +364,15 @@ function Bubble({ msg, isWelcome, isLast, onFollowUp, msgs }: {
           }
         </div>
         {triage && !isUser && !msg.streaming && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, width: '100%' }}>
             <TriageBadge level={triage} />
             {(triage === 'soon' || triage === 'emergency') && <FindDoctorBtn level={triage} msgs={msgs || []} />}
+            {/* 📄 Download report inline — mobile only, hidden on desktop via CSS */}
+            {isLast && msgs && msgs.length > 2 && (
+              <div className="download-mobile-only" style={{ width: '100%' }}>
+                <DownloadReportBtn msgs={msgs} inline={true} />
+              </div>
+            )}
           </div>
         )}
         {/* 💬 Follow-up chips on last bot message only */}
@@ -476,7 +482,7 @@ function BodyMap({ onSelect }: { onSelect: (symptom: string) => void }) {
 }
 
 // 📄 Symptom Report ────────────────────────────────────────────────────
-function DownloadReportBtn({ msgs }: { msgs: Message[] }) {
+function DownloadReportBtn({ msgs, inline = false }: { msgs: Message[]; inline?: boolean }) {
   const generate = () => {
     const userMsgs = msgs.filter(m => m.role === 'user')
     const botMsgs  = msgs.filter(m => m.role === 'assistant' && !m.streaming)
@@ -535,13 +541,21 @@ healthcare professional before making medical decisions.
   }
 
   return (
-    <button onClick={generate} className="btn-ghost scale-in"
-      style={{ padding: '7px 14px', fontSize: '0.78rem', borderRadius: 10, gap: 6, display: 'flex', alignItems: 'center' }}>
-      📄 Download Report
+    <button onClick={generate} className={inline ? 'btn-ghost scale-in' : 'btn-ghost scale-in'}
+      style={{
+        padding: inline ? '9px 16px' : '7px 14px',
+        fontSize: '0.78rem', borderRadius: 10, gap: 6,
+        display: 'flex', alignItems: 'center',
+        width: inline ? '100%' : 'auto',
+        justifyContent: inline ? 'center' : 'flex-start',
+      }}>
+      <span>📄</span>
+      <span>{inline ? 'Download your report' : 'Download Report'}</span>
     </button>
   )
 }
 
+// ⌨️ Animated placeholder phrases
 // ⌨️ Animated placeholder ──────────────────────────────────────────────
 function useAnimatedPlaceholder() {
   const [idx, setIdx] = useState(0)
@@ -804,8 +818,12 @@ export default function Home() {
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          {/* 📄 Download report — shows when there's an assessment */}
-          {inChat && hasAssessment && <DownloadReportBtn msgs={msgs} />}
+          {/* 📄 Download report — header on desktop, inline on mobile */}
+          {inChat && hasAssessment && (
+            <div className="download-desktop-only">
+              <DownloadReportBtn msgs={msgs} />
+            </div>
+          )}
           {inChat && <button className="btn-ghost" onClick={reset} style={{ padding: '5px 12px', fontSize: '0.77rem', fontWeight: 500, borderRadius: 8, minHeight: 32 }}>↺ New chat</button>}
           <ThemeToggle theme={theme} set={setTheme} />
         </div>
@@ -888,14 +906,9 @@ export default function Home() {
                 </div>
               </div>
             </div>
-           <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-  <p className="disclaimer fade-up fade-up-5">
-    ⚠️ CareLens provides general information only and is not a medical diagnosis.
-  </p>
-  <p className="fade-up fade-up-5" style={{ fontSize: '0.68rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
-    Made with ❤️ by Adarsh
-  </p>
-</div>
+            <p className="disclaimer" style={{ marginTop: 8 }}>
+              ⚠️ CareLens provides general information only and is not a medical diagnosis.
+            </p>
           </div>
         </main>
       )}
