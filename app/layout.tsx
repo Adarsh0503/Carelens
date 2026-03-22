@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Analytics } from '@vercel/analytics/next'
+
 
 export const metadata: Metadata = {
   title: 'CareLens — Understand Your Symptoms',
@@ -19,7 +21,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </head>
-      <body>{children}</body>
+      <body>{children}
+      <Analytics />
+
+      </body>
     </html>
   )
 }
