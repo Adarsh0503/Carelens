@@ -888,9 +888,14 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <p className="disclaimer" style={{ marginTop: 8 }}>
-              ⚠️ CareLens provides general information only and is not a medical diagnosis.
-            </p>
+           <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+  <p className="disclaimer fade-up fade-up-5">
+    ⚠️ CareLens provides general information only and is not a medical diagnosis.
+  </p>
+  <p className="fade-up fade-up-5" style={{ fontSize: '0.68rem', color: 'var(--muted)', letterSpacing: '0.05em' }}>
+    Made with ❤️ by Adarsh
+  </p>
+</div>
           </div>
         </main>
       )}
